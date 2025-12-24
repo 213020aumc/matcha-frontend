@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Define your custom theme variables here */
+@theme {
+  --color-primary: #4f46e5; /* Indigo 600 */
+  --color-primary-hover: #4338ca; /* Indigo 700 */
+
+  --color-secondary: #6b7280; /* Gray 500 */
+  --color-secondary-hover: #f9fafb; /* Gray 50 */
+}
+
+/* Base Styles */
+body {
+  background-color: var(--color-gray-50);
+  color: var(--color-gray-900);
+}
