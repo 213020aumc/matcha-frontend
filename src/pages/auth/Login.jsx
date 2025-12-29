@@ -1,140 +1,133 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
-import { apiClient } from "../../services/api";
-import { Button } from "../../components/ui/Button";
-import { OtpInput } from "../../components/ui/OtpInput";
-import { formStyles } from "../../styles/theme";
-import { Mail, ArrowLeft, RefreshCw } from "lucide-react";
-
-const styles = {
-  container: "min-h-screen flex bg-white",
-  brandSide:
-    "hidden lg:flex lg:w-1/2 bg-primary items-center justify-center relative overflow-hidden",
-  brandContent: "relative z-10 text-white p-12 max-w-lg",
-  brandTitle: "text-4xl font-bold mb-6",
-  brandText: "text-lg text-indigo-100 leading-relaxed",
-  formSide:
-    "w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 lg:p-16 bg-gray-50",
-  formCard:
-    "w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100",
-  header: "text-center",
-  title: "text-2xl font-bold text-gray-900 tracking-tight",
-  subtitle: "mt-2 text-sm text-gray-600",
-  timer:
-    "text-sm text-gray-500 font-medium flex items-center justify-center gap-2 mt-4",
-};
 
 export const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, verifyOtp, isAuthenticated, user, isAdmin } = useAuthStore();
 
-  // State
-  const [step, setStep] = useState(1); // 1 = Email, 2 = OTP
+  const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
-  // Timer State
-  const [timeLeft, setTimeLeft] = useState(0);
-
-  // Timer Logic
+  // Redirect if already authenticated (on page load)
   useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
+    if (isAuthenticated && user && !isRedirecting) {
+      handleRedirect(user);
     }
-  }, [timeLeft]);
+  }, [isAuthenticated, user, isRedirecting]);
 
-  // STEP 1: Send OTP
-  const handleSendOtp = async (e) => {
-    e?.preventDefault();
-    setLoading(true);
-    setError("");
+  const handleRedirect = (userData) => {
+    setIsRedirecting(true);
 
-    try {
-      // API Call: Request OTP
-      await apiClient.post("/auth/login", { email });
+    // Check if admin using the store function
+    if (isAdmin()) {
+      console.log("User is admin, redirecting to /admin");
+      navigate("/admin", { replace: true });
+      return;
+    }
 
-      // Success: Move to Step 2 & Start Timer
-      setStep(2);
-      setTimeLeft(30); // 30 seconds cooldown
-    } catch (err) {
-      setError(
-        err.response?.data?.message || "Failed to send code. Please try again."
-      );
-    } finally {
-      setLoading(false);
+    // Check if initial onboarding is complete
+    if (!userData?.termsAccepted || !userData?.role) {
+      navigate("/onboarding/initial", { replace: true });
+      return;
+    }
+
+    // Check profile status
+    const profileStatus = userData?.profileStatus;
+    const onboardingStep = userData?.onboardingStep || 0;
+
+    if (profileStatus === "PENDING_REVIEW") {
+      navigate("/profile/status", { replace: true });
+    } else if (profileStatus === "ACTIVE") {
+      navigate("/profile/status", { replace: true });
+    } else if (profileStatus === "REJECTED") {
+      navigate("/profile/status", { replace: true });
+    } else if (onboardingStep >= 6) {
+      navigate("/profile/status", { replace: true });
+    } else {
+      const stepRoutes = {
+        0: "/onboarding/basics",
+        1: "/onboarding/basics",
+        2: "/onboarding/background",
+        3: "/onboarding/health",
+        4: "/onboarding/genetic",
+        5: "/onboarding/compensation",
+      };
+      navigate(stepRoutes[onboardingStep] || "/onboarding/basics", {
+        replace: true,
+      });
     }
   };
 
-  // STEP 2: Verify OTP
-  const handleVerifyOtp = async (e) => {
-    e?.preventDefault();
-    setLoading(true);
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
     setError("");
+    setIsLoading(true);
 
     try {
-      // 1. Verify API Call
-      const { data } = await apiClient.post("/auth/verify-otp", { email, otp });
-      const user = data.data.user;
+      await login(email);
+      setStep("otp");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      // 2. Update Global Store (Sync)
-      // This sets isAuthenticated = true immediately
-      login(user, data.token);
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+    setIsRedirecting(true); // Prevent useEffect from triggering redirect
 
-      // 3. ROLE-BASED REDIRECTION LOGIC
-      if (user.role === "ADMIN" || user.role === "Super Admin") {
-        // A. Admin Path
-        navigate("/admin", { replace: true });
+    try {
+      const result = await verifyOtp(email, otp);
+
+      // Use the user data from the response directly
+      const userData = result.data?.user;
+
+      if (userData) {
+        // Small delay to ensure store is updated
+        setTimeout(() => {
+          handleRedirect(userData);
+        }, 100);
       } else {
-        // B. Standard User Path (Calculate "Relevant UI")
-
-        // Scenario 1: Terms not accepted -> Initial Onboarding
-        if (!user.termsAccepted) {
-          navigate("/onboarding/initial", { replace: true });
-          return;
-        }
-
-        // Scenario 2: Incomplete Wizard (Steps 0-5)
-        // Check ONBOARDING_STEPS to find the string key (e.g., "HEALTH")
-        if (user.onboardingStep < 6) {
-          const currentStepKey =
-            ONBOARDING_STEPS[user.onboardingStep] || "BASICS";
-          const targetRoute = STEP_ROUTES[currentStepKey];
-          navigate(targetRoute, { replace: true });
-          return;
-        }
-
-        // Scenario 3: Pending Review (Step 6)
-        if (user.profileStatus === "PENDING_REVIEW") {
-          navigate("/profile/status", { replace: true });
-          return;
-        }
-
-        // Scenario 4: Fully Active / Dashboard
-        navigate("/profile/status", { replace: true });
+        // Fallback - redirect to initial onboarding
+        navigate("/onboarding/initial", { replace: true });
       }
     } catch (err) {
-      console.error(err);
-      setError(
-        err.response?.data?.message ||
-          "Invalid code. Please check and try again."
-      );
+      console.error("OTP verification error:", err);
+      setError(err.response?.data?.message || "Invalid OTP");
+      setIsRedirecting(false);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
+  // Show loading if redirecting
+  if (isRedirecting && isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-500">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.container}>
+    <div className="min-h-screen flex bg-white">
       {/* LEFT SIDE: BRANDING */}
-      <div className={styles.brandSide}>
+      <div className="hidden lg:flex lg:w-1/2 bg-primary items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-indigo-600 to-blue-700 opacity-90" />
-        <div className={styles.brandContent}>
-          <h1 className={styles.brandTitle}>Welcome to Helix</h1>
-          <p className={styles.brandText}>
+        <div className="relative z-10 text-white p-12 max-w-lg">
+          <h1 className="text-4xl font-bold mb-6">Welcome to Helix</h1>
+          <p className="text-lg text-indigo-100 leading-relaxed">
             Secure, password-less access. Enter your email to receive a
             verification code.
           </p>
@@ -142,107 +135,85 @@ export const Login = () => {
       </div>
 
       {/* RIGHT SIDE: FORM */}
-      <div className={styles.formSide}>
-        <div className={styles.formCard}>
-          {/* HEADER */}
-          <div className={styles.header}>
-            <h2 className={styles.title}>
-              {step === 1 ? "Sign in to Helix" : "Check your email"}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 lg:p-16 bg-gray-50">
+        <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              {step === "email" ? "Sign in to Helix" : "Check your email"}
             </h2>
-            <p className={styles.subtitle}>
-              {step === 1
+            <p className="mt-2 text-sm text-gray-600">
+              {step === "email"
                 ? "We'll send a 6-digit code to your email."
                 : `We sent a code to ${email}`}
             </p>
           </div>
 
           {error && (
-            <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg text-center">
-              {error}
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-red-600 text-sm">{error}</p>
             </div>
           )}
 
-          {/* STEP 1: EMAIL FORM */}
-          {step === 1 && (
-            <form className="mt-8 space-y-6" onSubmit={handleSendOtp}>
+          {step === "email" ? (
+            <form onSubmit={handleSendOtp} className="space-y-6">
               <div>
-                <label className={formStyles.label}>Email address</label>
-                <div className="relative mt-1">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    className={`${formStyles.input} pl-10`}
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" isLoading={loading}>
-                Send Code
-              </Button>
-            </form>
-          )}
-
-          {/* STEP 2: OTP FORM */}
-          {step === 2 && (
-            <form className="mt-8 space-y-6" onSubmit={handleVerifyOtp}>
-              <div>
-                <label className="block text-center text-sm font-medium text-gray-700 mb-4">
-                  Enter the 6-digit code
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email Address
                 </label>
-                <OtpInput
-                  length={6}
-                  value={otp}
-                  onChange={setOtp}
-                  disabled={loading}
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                  required
+                  autoFocus
                 />
               </div>
-
-              <Button
+              <button
                 type="submit"
-                className="w-full"
-                isLoading={loading}
-                disabled={otp.length !== 6}
+                disabled={isLoading || !email}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Verify & Sign In
-              </Button>
-
-              {/* RESEND LOGIC */}
-              <div className="text-center">
-                {timeLeft > 0 ? (
-                  <p className={styles.timer}>
-                    Resend code in{" "}
-                    <span className="text-gray-900 font-bold">
-                      00:{timeLeft.toString().padStart(2, "0")}
-                    </span>
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    className="flex items-center justify-center gap-2 mx-auto text-sm font-medium text-primary hover:text-indigo-500"
-                  >
-                    <RefreshCw size={16} /> Resend Code
-                  </button>
-                )}
+                {isLoading ? "Sending..." : "Continue with Email"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Enter OTP
+                </label>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) =>
+                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="123456"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition text-center text-2xl tracking-widest"
+                  maxLength={6}
+                  required
+                  autoFocus
+                />
               </div>
-
-              {/* GO BACK */}
+              <button
+                type="submit"
+                disabled={isLoading || otp.length !== 6}
+                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? "Verifying..." : "Verify OTP"}
+              </button>
               <button
                 type="button"
                 onClick={() => {
-                  setStep(1);
+                  setStep("email");
                   setOtp("");
                   setError("");
                 }}
-                className="w-full text-sm text-gray-500 hover:text-gray-900 flex items-center justify-center gap-1"
+                className="w-full py-3 text-gray-600 hover:text-gray-900 transition"
               >
-                <ArrowLeft size={16} /> Change email
+                ← Change Email
               </button>
             </form>
           )}
@@ -251,3 +222,5 @@ export const Login = () => {
     </div>
   );
 };
+
+export default Login;

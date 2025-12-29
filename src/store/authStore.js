@@ -1,61 +1,155 @@
+// src/store/authStore.js
 import { create } from "zustand";
 import { apiClient } from "../services/api";
 
 export const useAuthStore = create((set, get) => ({
   user: null,
   isAuthenticated: false,
-  isLoading: true, // Start true to block UI until we check token
+  isLoading: true,
+  permissions: [],
 
-  // Actions
-  login: (userData, token) => {
-    if (token) {
-      localStorage.setItem("token", token);
-    }
-    set({ user: userData, isAuthenticated: true, isLoading: false });
+  // Check if user is admin
+  isAdmin: () => {
+    const { user } = get();
+    if (!user) return false;
+
+    const adminRoles = ["Super Admin", "Admin", "Moderator"];
+    return adminRoles.includes(user?.accessRole?.name);
   },
 
-  logout: () => {
-    localStorage.removeItem("token");
-    set({ user: null, isAuthenticated: false, isLoading: false });
-    // Use window.location to ensure a clean state reset, but check if we are already there
-    if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
-  },
-
+  // Fetch current user profile on app load
   fetchMe: async () => {
-    // 1. PREVENT LOOP: Check if token exists before calling API
     const token = localStorage.getItem("token");
-
     if (!token) {
-      // No token? We are definitely a guest. Stop loading, don't call API.
-      set({ user: null, isAuthenticated: false, isLoading: false });
-      return;
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        permissions: [],
+      });
+      return null;
     }
 
-    // 2. Token exists? Verify it with the backend.
-    set({ isLoading: true });
     try {
+      set({ isLoading: true });
       const { data } = await apiClient.get("/user/profile/current");
 
+      const user = data.data.user;
+      const permissions =
+        user?.accessRole?.permissions?.map((p) => p.slug) || [];
+
       set({
-        user: data.data.user,
+        user: {
+          ...user,
+          onboardingStep: data.data.lastCompletedStep ?? user.onboardingStep,
+          suggestedStage: data.data.suggestedStage,
+          isComplete: data.data.isComplete,
+        },
         isAuthenticated: true,
+        permissions,
         isLoading: false,
       });
+
       return data.data;
     } catch (error) {
-      // If the token was invalid (401), the interceptor usually handles logout.
-      // But we ensure state is cleared here too.
-      console.error("Session verification failed:", error);
-      localStorage.removeItem("token"); // Clear bad token
-      set({ user: null, isAuthenticated: false, isLoading: false });
+      console.error("fetchMe error:", error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem("token");
+      }
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        permissions: [],
+      });
+      return null;
     }
   },
 
-  updateUserStep: (newStep) => {
+  // Update user step after completing a stage
+  updateUserStep: (step) => {
     set((state) => ({
-      user: { ...state.user, onboardingStep: newStep },
+      user: state.user ? { ...state.user, onboardingStep: step } : null,
     }));
+  },
+
+  // Update user data locally
+  updateUser: (updates) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, ...updates } : null,
+    }));
+  },
+
+  // Check if user has a specific permission
+  hasPermission: (permissionSlug) => {
+    const { permissions, user } = get();
+    // Super admin bypass - add return true
+    if (user?.accessRole?.name === "Super Admin") return true;
+    return permissions.includes(permissionSlug);
+  },
+
+  // Login handler
+  login: async (email) => {
+    const { data } = await apiClient.post("/auth/login", { email });
+    return data;
+  },
+
+  // Verify OTP and set user
+  verifyOtp: async (email, otp) => {
+    const { data } = await apiClient.post("/auth/verify-otp", { email, otp });
+
+    // Store token
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+    }
+
+    const user = data.data?.user;
+    const permissions =
+      user?.accessRole?.permissions?.map((p) => p.slug) || [];
+
+    set({
+      user: user,
+      isAuthenticated: true,
+      permissions,
+      isLoading: false,
+    });
+
+    return data;
+  },
+
+  // Submit initial onboarding
+  submitOnboarding: async (onboardingData) => {
+    const { data } = await apiClient.put(
+      "/user/profile/onboarding",
+      onboardingData
+    );
+
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+            ...onboardingData,
+            termsAccepted: true,
+          }
+        : null,
+    }));
+
+    return data;
+  },
+
+  // Logout
+  logout: async () => {
+    try {
+      await apiClient.post("/auth/logout");
+    } catch (e) {
+      // Ignore
+    }
+    localStorage.removeItem("token");
+    set({
+      user: null,
+      isAuthenticated: false,
+      permissions: [],
+      isLoading: false,
+    });
   },
 }));
