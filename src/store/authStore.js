@@ -32,7 +32,7 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       set({ isLoading: true });
-      const { data } = await apiClient.get("/user/profile/current");
+      const { data } = await apiClient.get("/user/profile/me");
 
       const user = data.data.user;
       const permissions =

@@ -27,7 +27,7 @@ export const BasicsForm = () => {
     phone: "",
     address: "",
     idDocument: null,
-    docType: "DRIVER_LICENSE",
+    docType: "",
     babyPhoto: null,
     currentPhoto: null,
   });

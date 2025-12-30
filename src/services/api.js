@@ -25,7 +25,7 @@ apiClient.interceptors.response.use(
     // Skip redirect for these routes
     const skipRedirectRoutes = [
       "/auth/",
-      "/user/profile/current",
+      "/user/profile/me",
       "/user/profile/onboarding",
     ];
 
