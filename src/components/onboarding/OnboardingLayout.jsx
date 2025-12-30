@@ -5,10 +5,12 @@ import { CheckCircle2, Circle, Dot } from "lucide-react";
 
 // Separated Styles
 const styles = {
-  layout: "min-h-screen bg-gray-50 flex flex-col md:flex-row max-w-7xl mx-auto",
+  // Removed max-w-7xl to allow full fluid width if needed, or keep it for the outer shell
+  layout: "min-h-screen bg-gray-50 flex flex-col md:flex-row mx-auto",
   sidebar:
     "w-full md:w-80 bg-white border-r border-gray-200 p-8 hidden md:block h-screen sticky top-0",
-  content: "flex-1 p-6 md:p-12 overflow-y-auto",
+  // REMOVED internal padding constraints that might fight with the child forms
+  content: "flex-1 flex flex-col min-h-screen overflow-y-auto w-full",
   stepItem: (active, completed) => `
     flex items-center gap-4 p-3 rounded-lg transition-all mb-2
     ${active ? "bg-primary/5 text-primary font-medium" : "text-gray-500"}
@@ -22,12 +24,11 @@ export const OnboardingLayout = () => {
   const { user } = useAuthStore();
   const currentStep = user?.onboardingStep || 0;
   const steps = Object.values(ONBOARDING_STEPS).slice(0, 6);
-
   const progressPercentage = (currentStep / (steps.length - 1)) * 100;
 
   return (
     <div className={styles.layout}>
-      {/* --- MOBILE HEADER (Added) --- */}
+      {/* Mobile Header */}
       <div className={styles.mobileHeader}>
         <div className="flex items-center justify-between mb-2">
           <h1 className="font-bold text-gray-900">Setup Profile</h1>
@@ -35,7 +36,6 @@ export const OnboardingLayout = () => {
             Step {currentStep + 1} of {steps.length}
           </span>
         </div>
-        {/* Simple Progress Bar */}
         <div className="w-full bg-gray-100 rounded-full h-2">
           <div
             className="bg-primary h-2 rounded-full transition-all duration-300"
@@ -44,18 +44,16 @@ export const OnboardingLayout = () => {
         </div>
       </div>
 
-      {/* --- DESKTOP SIDEBAR --- */}
+      {/* Sidebar */}
       <aside className={styles.sidebar}>
         <div className="mb-10">
           <h1 className="text-2xl font-bold text-gray-900">Profile Setup</h1>
           <p className="text-sm text-gray-500 mt-1">Let's get you set up</p>
         </div>
-
         <nav>
           {steps.map((label, index) => {
             const isCompleted = index < currentStep;
             const isActive = index === currentStep;
-
             return (
               <div
                 key={label}
@@ -78,12 +76,11 @@ export const OnboardingLayout = () => {
         </nav>
       </aside>
 
-      {/* --- MAIN CONTENT AREA --- */}
+      {/* MAIN CONTENT AREA */}
       <main className={styles.content}>
-        <div className="max-w-2xl mx-auto">
-          {/* Constrained width for better readability on large screens */}
-          <Outlet />
-        </div>
+        {/* REMOVED the <div className="max-w-2xl mx-auto"> wrapper here */}
+        {/* The Outlet now takes the full available space, allowing the footer to stretch */}
+        <Outlet />
       </main>
     </div>
   );

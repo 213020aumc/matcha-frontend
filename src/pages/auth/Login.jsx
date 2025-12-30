@@ -1,50 +1,66 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
+import { authStyles as styles } from "../../styles/auth";
 
 export const Login = () => {
   const navigate = useNavigate();
   const { login, verifyOtp, isAuthenticated, user, isAdmin } = useAuthStore();
 
+  // State
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+
+  // OTP State: Array of 6 strings
+  const [otp, setOtp] = useState(new Array(6).fill(""));
+  const inputRefs = useRef([]);
+
+  // UI State
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
 
-  // Redirect if already authenticated (on page load)
+  // Timer State
+  const [timer, setTimer] = useState(30);
+  const [canResend, setCanResend] = useState(false);
+
+  // --- Redirect Logic ---
   useEffect(() => {
     if (isAuthenticated && user && !isRedirecting) {
       handleRedirect(user);
     }
   }, [isAuthenticated, user, isRedirecting]);
 
+  // --- Timer Logic ---
+  useEffect(() => {
+    let interval;
+    if (step === "otp" && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setCanResend(true);
+    }
+    return () => clearInterval(interval);
+  }, [step, timer]);
+
   const handleRedirect = (userData) => {
     setIsRedirecting(true);
 
-    // Check if admin using the store function
     if (isAdmin()) {
-      console.log("User is admin, redirecting to /admin");
       navigate("/admin", { replace: true });
       return;
     }
 
-    // Check if initial onboarding is complete
     if (!userData?.termsAccepted || !userData?.role) {
       navigate("/onboarding/initial", { replace: true });
       return;
     }
 
-    // Check profile status
     const profileStatus = userData?.profileStatus;
     const onboardingStep = userData?.onboardingStep || 0;
 
-    if (profileStatus === "PENDING_REVIEW") {
-      navigate("/profile/status", { replace: true });
-    } else if (profileStatus === "ACTIVE") {
-      navigate("/profile/status", { replace: true });
-    } else if (profileStatus === "REJECTED") {
+    if (["PENDING_REVIEW", "ACTIVE", "REJECTED"].includes(profileStatus)) {
       navigate("/profile/status", { replace: true });
     } else if (onboardingStep >= 6) {
       navigate("/profile/status", { replace: true });
@@ -63,14 +79,18 @@ export const Login = () => {
     }
   };
 
+  // --- Handlers ---
+
   const handleSendOtp = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError("");
     setIsLoading(true);
 
     try {
       await login(email);
       setStep("otp");
+      setTimer(30); // Reset timer
+      setCanResend(false);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to send OTP");
     } finally {
@@ -80,23 +100,21 @@ export const Login = () => {
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
+    const otpValue = otp.join("");
+
+    if (otpValue.length !== 6) return;
+
     setError("");
     setIsLoading(true);
-    setIsRedirecting(true); // Prevent useEffect from triggering redirect
+    setIsRedirecting(true);
 
     try {
-      const result = await verifyOtp(email, otp);
-
-      // Use the user data from the response directly
+      const result = await verifyOtp(email, otpValue);
       const userData = result.data?.user;
 
       if (userData) {
-        // Small delay to ensure store is updated
-        setTimeout(() => {
-          handleRedirect(userData);
-        }, 100);
+        setTimeout(() => handleRedirect(userData), 100);
       } else {
-        // Fallback - redirect to initial onboarding
         navigate("/onboarding/initial", { replace: true });
       }
     } catch (err) {
@@ -108,12 +126,54 @@ export const Login = () => {
     }
   };
 
-  // Show loading if redirecting
+  // --- OTP Input Logic ---
+  const handleOtpChange = (element, index) => {
+    if (isNaN(element.value)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = element.value;
+    setOtp(newOtp);
+
+    // Focus next input
+    if (element.value && index < 5) {
+      inputRefs.current[index + 1].focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e, index) => {
+    // Handle Backspace
+    if (e.key === "Backspace") {
+      if (!otp[index] && index > 0) {
+        const newOtp = [...otp];
+        newOtp[index - 1] = "";
+        setOtp(newOtp);
+        inputRefs.current[index - 1].focus();
+      }
+    }
+  };
+
+  const handleOtpPaste = (e) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").slice(0, 6);
+    if (!/^\d+$/.test(pastedData)) return; // Only numbers
+
+    const newOtp = [...otp];
+    pastedData.split("").forEach((char, i) => {
+      if (i < 6) newOtp[i] = char;
+    });
+    setOtp(newOtp);
+
+    // Focus appropriate box
+    const focusIndex = Math.min(pastedData.length, 5);
+    inputRefs.current[focusIndex].focus();
+  };
+
+  // --- Loading View ---
   if (isRedirecting && isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className={styles.loadingContainer}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <div className={styles.loadingSpinner}></div>
           <p className="text-gray-500">Redirecting...</p>
         </div>
       </div>
@@ -121,13 +181,13 @@ export const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-white">
+    <div className={styles.pageContainer}>
       {/* LEFT SIDE: BRANDING */}
-      <div className="hidden lg:flex lg:w-1/2 bg-primary items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-linear-to-br from-indigo-600 to-blue-700 opacity-90" />
-        <div className="relative z-10 text-white p-12 max-w-lg">
-          <h1 className="text-4xl font-bold mb-6">Welcome to Helix</h1>
-          <p className="text-lg text-indigo-100 leading-relaxed">
+      <div className={styles.brandSection}>
+        <div className={styles.brandOverlay} />
+        <div className={styles.brandContent}>
+          <h1 className={styles.brandTitle}>Welcome to Helix</h1>
+          <p className={styles.brandText}>
             Secure, password-less access. Enter your email to receive a
             verification code.
           </p>
@@ -135,37 +195,31 @@ export const Login = () => {
       </div>
 
       {/* RIGHT SIDE: FORM */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 lg:p-16 bg-gray-50">
-        <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+      <div className={styles.formSection}>
+        <div className={styles.card}>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+            <h2 className={styles.headerTitle}>
               {step === "email" ? "Sign in to Helix" : "Check your email"}
             </h2>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className={styles.headerSubtitle}>
               {step === "email"
                 ? "We'll send a 6-digit code to your email."
                 : `We sent a code to ${email}`}
             </p>
           </div>
 
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-red-600 text-sm">{error}</p>
-            </div>
-          )}
+          {error && <div className={styles.errorBox}>{error}</div>}
 
           {step === "email" ? (
-            <form onSubmit={handleSendOtp} className="space-y-6">
+            <form onSubmit={handleSendOtp} className={styles.formGroup}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address
-                </label>
+                <label className={styles.inputLabel}>Email Address</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition"
+                  className={styles.inputField}
                   required
                   autoFocus
                 />
@@ -173,45 +227,64 @@ export const Login = () => {
               <button
                 type="submit"
                 disabled={isLoading || !email}
-                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className={styles.primaryButton}
               >
                 {isLoading ? "Sending..." : "Continue with Email"}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-6">
+            <form onSubmit={handleVerifyOtp} className={styles.formGroup}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Enter OTP
-                </label>
-                <input
-                  type="text"
-                  value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  placeholder="123456"
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition text-center text-2xl tracking-widest"
-                  maxLength={6}
-                  required
-                  autoFocus
-                />
+                <label className={styles.inputLabel}>Enter 6-Digit Code</label>
+
+                {/* 6-Digit Boxes */}
+                <div className={styles.otpContainer}>
+                  {otp.map((data, index) => (
+                    <input
+                      key={index}
+                      type="text"
+                      maxLength="1"
+                      ref={(el) => (inputRefs.current[index] = el)}
+                      value={data}
+                      onChange={(e) => handleOtpChange(e.target, index)}
+                      onKeyDown={(e) => handleOtpKeyDown(e, index)}
+                      onPaste={index === 0 ? handleOtpPaste : undefined}
+                      className={styles.otpInput}
+                      autoFocus={index === 0}
+                    />
+                  ))}
+                </div>
               </div>
+
               <button
                 type="submit"
-                disabled={isLoading || otp.length !== 6}
-                className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading || otp.join("").length !== 6}
+                className={styles.primaryButton}
               >
                 {isLoading ? "Verifying..." : "Verify OTP"}
               </button>
+
+              {/* Resend Timer */}
+              <div className={styles.resendContainer}>
+                <span className={styles.resendText}>Didn't receive code?</span>
+                <button
+                  type="button"
+                  onClick={canResend ? handleSendOtp : undefined}
+                  disabled={!canResend}
+                  className={styles.resendLink(!canResend)}
+                >
+                  {canResend ? "Resend Email" : `Resend in ${timer}s`}
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
                   setStep("email");
-                  setOtp("");
+                  setOtp(new Array(6).fill(""));
                   setError("");
                 }}
-                className="w-full py-3 text-gray-600 hover:text-gray-900 transition"
+                className={styles.secondaryButton}
               >
                 ← Change Email
               </button>

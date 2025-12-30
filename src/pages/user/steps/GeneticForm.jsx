@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { GENETIC_MARKERS } from "../../../constants/onboarding";
 import API from "../../../services/api";
 import { useAuthStore } from "../../../store/authStore";
+import { formStyles as styles } from "../../../styles/onboarding";
 
 export const GeneticForm = () => {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export const GeneticForm = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch existing genetic data on mount
+  // --- Data Fetching ---
   useEffect(() => {
     const fetchExistingData = async () => {
       try {
@@ -52,6 +53,7 @@ export const GeneticForm = () => {
     fetchExistingData();
   }, []);
 
+  // --- Handlers ---
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
     setShowResults(e.target.value.length > 0);
@@ -89,26 +91,19 @@ export const GeneticForm = () => {
     setError(null);
 
     try {
-      // Create FormData for file upload
       const formData = new FormData();
-
-      // Add genetic markers (conditions) as JSON array
       const conditions = selectedMarkers.map((m) => m.id);
       formData.append("conditions", JSON.stringify(conditions));
 
-      // Add file if uploaded
       if (geneticReportFile) {
         formData.append("geneticReport", geneticReportFile);
       }
-
-      // Mark as complete
       formData.append("isComplete", "true");
 
       await API.post("/user/profile/stage-4/genetic", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log("Stage 4 Complete! Navigating to Stage 5...");
       updateUserStep(4);
       navigate("/onboarding/compensation");
     } catch (err) {
@@ -132,51 +127,52 @@ export const GeneticForm = () => {
         !selectedMarkers.find((selected) => selected.id === m.id)
     ) || [];
 
-  // Loading state
+  // --- Loading ---
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#483d8b]"></div>
+      <div className={styles.loadingContainer}>
+        <div className={styles.loadingIcon}></div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-white font-sans relative">
+    <div className={styles.pageContainer}>
       {/* Header */}
-      <div className="pt-6 px-6">
-        <div className="w-full bg-gray-200 h-1 mb-6">
-          <div className="bg-[#483d8b] h-1 w-2/3 transition-all duration-300"></div>
+      <div className={styles.header}>
+        <div className={styles.progressBarContainer}>
+          <div
+            className="bg-primary h-full transition-all duration-300"
+            style={styles.progressBarFill(66)} // Stage 4 approx 66%
+          ></div>
         </div>
-        <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">
-          Stage 4 of 6 • Genetic Profile
-        </p>
+        <p className={styles.sectionLabel}>Stage 4 of 6 • Genetic Profile</p>
       </div>
 
+      {/* Error Box */}
       {error && (
-        <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-red-600 text-sm">{error}</p>
+        <div className="w-full max-w-lg mx-auto px-6 mt-4">
+          <div className={styles.errorBox}>{error}</div>
         </div>
       )}
 
-      <main className="flex-1 px-6 pb-48 overflow-y-auto relative">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Genetic Profile (CGT)
-        </h1>
-        <p className="text-gray-500 text-sm mb-6">
+      {/* Main Content */}
+      <main className={styles.contentContainer}>
+        <h1 className={styles.heading}>Genetic Profile (CGT)</h1>
+        <p className={styles.subHeading}>
           Are you a carrier for any genetic conditions?
         </p>
 
         {/* Search Input */}
-        <div className="relative mb-6">
-          <span className="absolute left-4 top-4 text-gray-400">🔍</span>
+        <div className={styles.searchContainer}>
+          <span className={styles.searchIcon}>🔍</span>
           <input
             type="text"
             placeholder="Search for a condition or gene (e.g. CFTR)"
             value={searchTerm}
             onChange={handleSearch}
             onFocus={() => searchTerm && setShowResults(true)}
-            className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-full border-none outline-none text-sm focus:ring-2 focus:ring-[#483d8b]"
+            className={styles.searchInput}
           />
           {searchTerm && (
             <button
@@ -184,29 +180,52 @@ export const GeneticForm = () => {
                 setSearchTerm("");
                 setShowResults(false);
               }}
-              className="absolute right-4 top-4 text-gray-400 font-bold"
+              className={styles.searchClear}
             >
               ✕
             </button>
+          )}
+
+          {/* Autocomplete Dropdown */}
+          {showResults && (
+            <div className={styles.resultsDropdown}>
+              {filteredMarkers.length > 0 ? (
+                filteredMarkers.map((marker) => (
+                  <div
+                    key={marker.id}
+                    onClick={() => toggleMarker(marker)}
+                    className={styles.resultItem}
+                  >
+                    <span className="font-medium">{marker.label}</span>
+                    {marker.gene && (
+                      <span className="text-gray-400 ml-2">
+                        ({marker.gene})
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className={styles.noResults}>
+                  No results found for "{searchTerm}"
+                </div>
+              )}
+            </div>
           )}
         </div>
 
         {/* Selected Chips */}
         {selectedMarkers.length > 0 && (
           <div className="mb-6">
-            <p className="text-xs font-bold text-gray-500 uppercase mb-3">
+            <p className={styles.chipLabel}>
               Selected Conditions ({selectedMarkers.length})
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className={styles.chipContainer}>
               {selectedMarkers.map((marker) => (
-                <div
-                  key={marker.id}
-                  className="bg-[#483d8b] text-white px-3 py-1.5 rounded-full flex items-center gap-2 text-sm shadow-md"
-                >
+                <div key={marker.id} className={styles.chip}>
                   <span>{marker.label}</span>
                   <button
                     onClick={() => removeMarker(marker.id)}
-                    className="text-white/80 hover:text-white"
+                    className={styles.chipRemove}
                   >
                     ✕
                   </button>
@@ -216,46 +235,24 @@ export const GeneticForm = () => {
           </div>
         )}
 
-        {/* Autocomplete Dropdown */}
-        {showResults && (
-          <div className="absolute left-6 right-6 z-10 bg-white border border-gray-100 shadow-xl rounded-2xl max-h-64 overflow-y-auto">
-            {filteredMarkers.length > 0 ? (
-              filteredMarkers.map((marker) => (
-                <div
-                  key={marker.id}
-                  onClick={() => toggleMarker(marker)}
-                  className="p-4 border-b border-gray-50 hover:bg-gray-50 cursor-pointer text-sm text-gray-700"
-                >
-                  <span className="font-medium">{marker.label}</span>
-                  {marker.gene && (
-                    <span className="text-gray-400 ml-2">({marker.gene})</span>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="p-4 text-sm text-gray-400">
-                No results found for "{searchTerm}"
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Existing Report Status */}
         {existingReportUrl && !geneticReportFile && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-700 text-sm">
+          <div className={styles.fileStatusBox("success")}>
+            <span className="text-sm font-medium">
               ✓ Genetic report already uploaded
-            </p>
+            </span>
           </div>
         )}
 
         {/* New File Upload Status */}
         {geneticReportFile && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
-            <p className="text-blue-700 text-sm">📄 {geneticReportFile.name}</p>
+          <div className={styles.fileStatusBox("active")}>
+            <span className="text-sm font-medium truncate max-w-50px">
+              📄 {geneticReportFile.name}
+            </span>
             <button
               onClick={() => setGeneticReportFile(null)}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              className="text-blue-600 hover:text-blue-800 text-sm font-bold ml-2"
             >
               Remove
             </button>
@@ -263,43 +260,50 @@ export const GeneticForm = () => {
         )}
 
         {/* Info Text */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-xl">
-          <p className="text-gray-600 text-sm">
+        <div className={styles.infoBox}>
+          <p className={styles.infoText}>
             💡 <strong>Tip:</strong> If you've done carrier genetic testing
             (CGT), you can upload your full report for a more complete profile.
           </p>
         </div>
       </main>
 
-      <footer className="absolute bottom-0 left-0 right-0 p-6 bg-white flex flex-col gap-4 border-t">
-        <label className="w-full py-4 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors">
-          <span>📤</span>
-          {geneticReportFile || existingReportUrl
-            ? "Replace Genetic Report"
-            : "Upload Genetic Report"}
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </label>
+      {/* Footer */}
+      <footer className={styles.footer}>
+        <div className={styles.footerStack}>
+          {/* Secondary Action: Upload */}
+          <label className={styles.secondaryActionButton}>
+            <span>📤</span>
+            <span>
+              {geneticReportFile || existingReportUrl
+                ? "Replace Genetic Report"
+                : "Upload Genetic Report"}
+            </span>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
 
-        <div className="flex justify-between items-center w-full">
-          <button
-            onClick={handleBack}
-            className="px-8 py-3 rounded-full border border-[#483d8b] text-[#483d8b] font-semibold"
-            disabled={isSubmitting}
-          >
-            Back
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="px-8 py-3 rounded-full bg-[#483d8b] text-white font-semibold shadow-lg disabled:opacity-50"
-          >
-            {isSubmitting ? "Saving..." : "Continue"}
-          </button>
+          {/* Navigation Row */}
+          <div className={styles.buttonRow}>
+            <button
+              onClick={handleBack}
+              className={styles.backButton}
+              disabled={isSubmitting}
+            >
+              Back
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className={styles.nextButton}
+            >
+              {isSubmitting ? "Saving..." : "Continue"}
+            </button>
+          </div>
         </div>
       </footer>
     </div>

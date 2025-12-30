@@ -104,8 +104,7 @@ export const useAuthStore = create((set, get) => ({
     }
 
     const user = data.data?.user;
-    const permissions =
-      user?.accessRole?.permissions?.map((p) => p.slug) || [];
+    const permissions = user?.accessRole?.permissions?.map((p) => p.slug) || [];
 
     set({
       user: user,
@@ -141,15 +140,21 @@ export const useAuthStore = create((set, get) => ({
   logout: async () => {
     try {
       await apiClient.post("/auth/logout");
-    } catch (e) {
-      // Ignore
+    } catch (error) {
+      // Even if the API fails, we must clear the client state
+      console.error("Logout API call failed", e);
+    } finally {
+      localStorage.removeItem("token");
+      set({
+        user: null,
+        isAuthenticated: false,
+        permissions: [],
+        isLoading: false,
+      });
+      // 4. Force Redirect to Login
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
     }
-    localStorage.removeItem("token");
-    set({
-      user: null,
-      isAuthenticated: false,
-      permissions: [],
-      isLoading: false,
-    });
   },
 }));
