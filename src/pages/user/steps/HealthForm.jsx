@@ -5,18 +5,56 @@ import API from "../../../services/api";
 import { useAuthStore } from "../../../store/authStore";
 import { formStyles as styles } from "../../../styles/onboarding";
 
+// --- Helper Component (Defined OUTSIDE to fix focus issues) ---
+const RenderRadioGroup = ({ label, value, onChange, yesDetails = null }) => (
+  <div className={styles.radioGroupContainer}>
+    <p className={styles.radioGroupLabel}>{label}</p>
+    <div className={styles.radioOptionsWrapper}>
+      <label className={styles.radioLabel}>
+        <input
+          type="radio"
+          checked={value === true}
+          onChange={() => onChange(true)}
+          className={styles.radioInput}
+        />
+        <span className={styles.radioText}>Yes</span>
+      </label>
+      <label className={styles.radioLabel}>
+        <input
+          type="radio"
+          checked={value === false}
+          onChange={() => onChange(false)}
+          className={styles.radioInput}
+        />
+        <span className={styles.radioText}>No</span>
+      </label>
+    </div>
+
+    {/* Conditional Text Area */}
+    {value === true && yesDetails && (
+      <div className="mt-3 w-full animate-fade-in">
+        <textarea
+          placeholder={yesDetails.placeholder}
+          value={yesDetails.value}
+          onChange={(e) => yesDetails.onChange(e.target.value)}
+          className={styles.textArea}
+          rows={3}
+        />
+      </div>
+    )}
+  </div>
+);
+
 export const HealthForm = () => {
   const navigate = useNavigate();
   const { user, updateUserStep } = useAuthStore();
   const role = user?.gender === "MAN" ? "donor" : "recipient";
 
-  // --- State Management ---
   const [showPrivacyPopup, setShowPrivacyPopup] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Consolidated Form State
   const [formData, setFormData] = useState({
     // 1. Chronic Conditions
     chronicConditions: [],
@@ -27,9 +65,6 @@ export const HealthForm = () => {
     surgeryDetails: "",
 
     hasAllergies: null,
-    // Note: Per your request, Allergies is just Yes/No in the UI sequence,
-    // unlike Surgeries/Meds which have text inputs.
-
     cmvStatus: null,
 
     hasPrescriptionMeds: null,
@@ -39,14 +74,14 @@ export const HealthForm = () => {
     hasMentalHealthCondition: null,
     mentalHealthDetails: "",
 
-    // 4. Reproductive (Role Based)
+    // 4. Reproductive
     hasBiologicalChildren: null,
-    hasReproductiveIssues: null, // Male
-    hasRegularCycles: null, // Female
-    hasBeenPregnant: null, // Female
-    hasReproductiveConds: null, // Female
+    hasReproductiveIssues: null,
+    hasRegularCycles: null,
+    hasBeenPregnant: null,
+    hasReproductiveConds: null,
 
-    // 5. Lifestyle (Kept for backend compatibility, though strictly not in your text sequence list)
+    // 5. Lifestyle
     hasTestedPositiveHIVHep: null,
     hasUsedNeedles: null,
     hasReceivedTransfusion: null,
@@ -64,7 +99,6 @@ export const HealthForm = () => {
         if (data?.data) {
           const h = data.data;
 
-          // Map Chronic Conditions from DB
           const conditions = [];
           if (h.hasDiabetes) conditions.push("DIABETES");
           if (h.hasHeartCondition) conditions.push("HEART_CONDITION");
@@ -78,31 +112,24 @@ export const HealthForm = () => {
             chronicConditions: conditions,
             otherChronicCondition: h.otherConditions || "",
 
-            // Surgeries (DB string -> UI Boolean + String)
             hasMajorSurgeries: !!h.majorSurgeries,
             surgeryDetails: h.majorSurgeries || "",
 
-            // Allergies
             hasAllergies: h.allergies,
-
             cmvStatus: h.cmvStatus || null,
 
-            // Meds
             hasPrescriptionMeds: !!h.medications,
             prescriptionMedsList: h.medications || "",
 
-            // Mental Health
             hasMentalHealthCondition: !!h.mentalHealthHistory,
             mentalHealthDetails: h.mentalHealthHistory || "",
 
-            // Reproductive
             hasBiologicalChildren: h.biologicalChildren,
             hasReproductiveIssues: h.reproductiveIssues,
             hasRegularCycles: h.menstrualRegularity,
             hasBeenPregnant: h.pregnancyHistory,
             hasReproductiveConds: h.reproductiveConds,
 
-            // Lifestyle
             hasTestedPositiveHIVHep: h.hivHepStatus,
             hasUsedNeedles: h.needleUsage,
             hasReceivedTransfusion: h.transfusionHistory,
@@ -120,7 +147,6 @@ export const HealthForm = () => {
   }, []);
 
   // --- Handlers ---
-
   const handleConditionToggle = (id) => {
     setFormData((prev) => {
       const exists = prev.chronicConditions.includes(id);
@@ -133,16 +159,12 @@ export const HealthForm = () => {
     });
   };
 
-  const handlePrivacyToggle = () => {
-    // Logic: If toggled (True), display Popup
-    setShowPrivacyPopup(true);
-  };
+  const handlePrivacyToggle = () => setShowPrivacyPopup(true);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
       const payload = {
-        // Chronic
         diabetes: formData.chronicConditions.includes("DIABETES"),
         heart: formData.chronicConditions.includes("HEART_CONDITION"),
         autoimmune: formData.chronicConditions.includes("AUTOIMMUNE"),
@@ -153,12 +175,13 @@ export const HealthForm = () => {
           ? formData.otherChronicCondition
           : null,
 
-        // Medical History
-        // Logic: "others are string where If selected Yes" -> Send string if Yes, else null
         majorSurgeries: formData.hasMajorSurgeries
           ? formData.surgeryDetails
           : null,
-        allergies: formData.hasAllergies || false,
+
+        // FIX: Convert boolean to string to satisfy "must be a string" validation error
+        allergies: formData.hasAllergies ? "true" : "false",
+
         cmvStatus: formData.cmvStatus,
         medications: formData.hasPrescriptionMeds
           ? formData.prescriptionMedsList
@@ -167,14 +190,12 @@ export const HealthForm = () => {
           ? formData.mentalHealthDetails
           : null,
 
-        // Reproductive
         biologicalChildren: formData.hasBiologicalChildren || false,
         reproductiveIssues: formData.hasReproductiveIssues || false,
         menstrualRegularity: formData.hasRegularCycles,
         pregnancyHistory: formData.hasBeenPregnant,
         reproductiveConds: formData.hasReproductiveConds || false,
 
-        // Lifestyle (Required by backend schema)
         hivStatus: formData.hasTestedPositiveHIVHep || false,
         needleUsage: formData.hasUsedNeedles || false,
         transfusionHistory: formData.hasReceivedTransfusion || false,
@@ -203,46 +224,6 @@ export const HealthForm = () => {
       </div>
     );
   }
-
-  // --- Helper Component for Radio Groups ---
-  const RenderRadioGroup = ({ label, value, onChange, yesDetails = null }) => (
-    <div className={styles.radioGroupContainer}>
-      <p className={styles.radioGroupLabel}>{label}</p>
-      <div className={styles.radioOptionsWrapper}>
-        <label className={styles.radioLabel}>
-          <input
-            type="radio"
-            checked={value === true}
-            onChange={() => onChange(true)}
-            className={styles.radioInput}
-          />
-          <span className={styles.radioText}>Yes</span>
-        </label>
-        <label className={styles.radioLabel}>
-          <input
-            type="radio"
-            checked={value === false}
-            onChange={() => onChange(false)}
-            className={styles.radioInput}
-          />
-          <span className={styles.radioText}>No</span>
-        </label>
-      </div>
-
-      {/* Conditional Text Area: Displays ONLY if Yes is selected AND details config exists */}
-      {value === true && yesDetails && (
-        <div className="mt-3 w-full animate-fade-in">
-          <textarea
-            placeholder={yesDetails.placeholder}
-            value={yesDetails.value}
-            onChange={(e) => yesDetails.onChange(e.target.value)}
-            className={styles.textArea}
-            rows={3}
-          />
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className={styles.pageContainer}>
@@ -278,14 +259,13 @@ export const HealthForm = () => {
         </p>
       </div>
 
-      {/* Error Box */}
       {error && (
         <div className="w-full max-w-lg mx-auto px-6 mt-4">
           <div className={styles.errorBox}>{error}</div>
         </div>
       )}
 
-      {/* Main Content: Single Scrollable Area */}
+      {/* Main Content */}
       <main className={styles.contentContainer}>
         <h1 className={styles.heading}>Personal Health History</h1>
         <p className={styles.subHeading}>
@@ -293,7 +273,7 @@ export const HealthForm = () => {
           history.
         </p>
 
-        {/* --- Privacy Toggle --- */}
+        {/* Privacy Toggle */}
         <div className={styles.privacyWrapper}>
           <span className={styles.privacyLabel}>Always Private</span>
           <div
@@ -306,7 +286,7 @@ export const HealthForm = () => {
           </div>
         </div>
 
-        {/* --- 1. Chronic Conditions --- */}
+        {/* 1. Chronic Conditions */}
         <div className="mb-8">
           <p className="font-medium text-gray-800 mb-4 text-sm">
             Have you ever been diagnosed by a doctor with any of the following
@@ -335,7 +315,6 @@ export const HealthForm = () => {
                   <span className={styles.checkboxText}>{cond.label}</span>
                 </label>
 
-                {/* Conditional "Please Specify" for Other */}
                 {cond.id === "OTHER" &&
                   formData.chronicConditions.includes("OTHER") && (
                     <input
@@ -356,7 +335,7 @@ export const HealthForm = () => {
           </div>
         </div>
 
-        {/* --- 2. Surgeries --- */}
+        {/* 2. Surgeries */}
         <RenderRadioGroup
           label="Have you had any major surgeries?"
           value={formData.hasMajorSurgeries}
@@ -370,14 +349,14 @@ export const HealthForm = () => {
           }}
         />
 
-        {/* --- 3. Allergies (No text area per request) --- */}
+        {/* 3. Allergies */}
         <RenderRadioGroup
           label="Do you have any known allergies (medications, food, environmental)?"
           value={formData.hasAllergies}
           onChange={(val) => setFormData({ ...formData, hasAllergies: val })}
         />
 
-        {/* --- 4. CMV Status --- */}
+        {/* 4. CMV Status */}
         <div className="mb-6">
           <p className={styles.radioGroupLabel}>What is your CMV Status?</p>
           <div className={styles.toggleContainer}>
@@ -402,7 +381,7 @@ export const HealthForm = () => {
           </div>
         </div>
 
-        {/* --- 5. Prescription Medications --- */}
+        {/* 5. Prescription Medications */}
         <RenderRadioGroup
           label="Are you currently taking any prescription medications?"
           value={formData.hasPrescriptionMeds}
@@ -417,9 +396,9 @@ export const HealthForm = () => {
           }}
         />
 
-        {/* --- 6. Mental Health --- */}
+        {/* 6. Mental Health */}
         <RenderRadioGroup
-          label="Have you ever been diagnosed with or received treatment for a significant mental health condition (e.g., depression, anxiety disorder, bipolar disorder, schizophrenia)?"
+          label="Have you ever been diagnosed with or received treatment for a significant mental health condition?"
           value={formData.hasMentalHealthCondition}
           onChange={(val) =>
             setFormData({ ...formData, hasMentalHealthCondition: val })
@@ -432,10 +411,9 @@ export const HealthForm = () => {
           }}
         />
 
-        {/* --- 7. Reproductive Questions (Role Based) --- */}
+        {/* 7. Reproductive Questions */}
         <div className="mt-4">
           {role === "donor" ? (
-            /* Male / Sperm Donor Flow */
             <>
               <RenderRadioGroup
                 label="Have you fathered any children (biologically)?"
@@ -445,7 +423,7 @@ export const HealthForm = () => {
                 }
               />
               <RenderRadioGroup
-                label="Have you ever been diagnosed with any reproductive health issues (e.g., low sperm count, varicocele)?"
+                label="Have you ever been diagnosed with any reproductive health issues?"
                 value={formData.hasReproductiveIssues}
                 onChange={(v) =>
                   setFormData({ ...formData, hasReproductiveIssues: v })
@@ -453,7 +431,6 @@ export const HealthForm = () => {
               />
             </>
           ) : (
-            /* Female / Egg Donor Flow */
             <>
               <RenderRadioGroup
                 label="Are your menstrual cycles regular?"
@@ -470,7 +447,7 @@ export const HealthForm = () => {
                 }
               />
               <RenderRadioGroup
-                label="Have you ever been diagnosed with any reproductive health conditions (e.g., PCOS, endometriosis, fibroids)?"
+                label="Have you ever been diagnosed with any reproductive health conditions?"
                 value={formData.hasReproductiveConds}
                 onChange={(v) =>
                   setFormData({ ...formData, hasReproductiveConds: v })
@@ -480,8 +457,7 @@ export const HealthForm = () => {
           )}
         </div>
 
-        {/* --- 8. Lifestyle (Backend Compatibility) --- */}
-        {/* These ensure the data payload is complete for the backend validation */}
+        {/* 8. Lifestyle */}
         <div className="mt-4 space-y-1">
           <RenderRadioGroup
             label="Have you ever tested positive for HIV, Hepatitis B, or Hepatitis C?"
@@ -519,7 +495,6 @@ export const HealthForm = () => {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <button

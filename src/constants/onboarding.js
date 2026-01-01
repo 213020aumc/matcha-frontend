@@ -205,7 +205,7 @@ export const PHYSICAL_ATTRIBUTES = {
     { id: "GAY", label: "Gay" },
     { id: "LESBIAN", label: "Lesbian" },
     { id: "BISEXUAL", label: "Bisexual" },
-    { id: "OTHER", label: "Other" },
+    { id: "PREFER_NOT_TO_SAY", label: "Prefer not to say" },
   ],
 };
 
@@ -232,4 +232,11 @@ export const GENETIC_MARKERS = [
   { id: "MCCC1", label: "3-Methylcrotonyl-CoA Carboxylase Deficiency (MCCC1)" },
   { id: "MCCC2", label: "3-Methylcrotonyl-CoA Carboxylase Deficiency (MCCC2)" },
   { id: "OPA3", label: "3-Methylglutaconic Aciduria Type III (OPA3)" },
+];
+
+// Use these for Interested In selection:
+export const INTERESTED_IN_OPTIONS = [
+  { id: "SPERM", label: "Sperm" },
+  { id: "EGG", label: "Egg" },
+  { id: "EMBRYO", label: "Embryo" },
 ];
